@@ -2,14 +2,7 @@ name: Build & Release
 
 on:
   push:
-    branches: [master, main]
     tags: ["v*"]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Release tag (e.g. v1.0.0)，留空则使用 auto-<short sha>"
-        required: false
-        default: ""
 
 permissions:
   contents: write
@@ -66,69 +59,13 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Determine tag name
-        id: tag
-        run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          else
-            short_sha=$(echo "${GITHUB_SHA}" | cut -c1-7)
-            echo "name=auto-${short_sha}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Create tag
-        run: |
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-          git fetch --tags -f
-          tag_name="${{ steps.tag.outputs.name }}"
-          if git rev-parse "$tag_name" >/dev/null 2>&1; then
-            git tag -d "$tag_name"
-          fi
-          git tag -a "$tag_name" -m "Release $tag_name"
-          git push origin "$tag_name" --force
-
-      - name: Generate release body
-        id: body
-        run: |
-          tag_name="${{ steps.tag.outputs.name }}"
-          sha="${GITHUB_SHA}"
-          short="${sha:0:7}"
-          {
-            echo "body<<BODYEOF"
-            echo "**Build: \`$tag_name\`**"
-            echo ""
-            echo "Commit: \`$short\`  \`$sha\`"
-            echo "Event: \`${{ github.event_name }}\`"
-            echo "Triggered by: ${{ github.actor }}"
-            echo ""
-            echo "| Platform | Binary |"
-            echo "|----------|--------|"
-            echo "| Linux x86_64 | \`padavan-sim-linux-amd64\` |"
-            echo "| Windows x86_64 | \`padavan-sim-windows-amd64.exe\` |"
-            echo "| macOS x86_64 | \`padavan-sim-macos-amd64\` |"
-            echo "BODYEOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Create or Update Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.name }}
-          name: "Release ${{ steps.tag.outputs.name }}"
-          body: ${{ steps.body.outputs.body }}
           files: artifacts/*/*
-          draft: false
-          prerelease: false
-          overwrite_files: true
+          generate_release_notes: true
