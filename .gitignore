@@ -1,0 +1,15 @@
+﻿__pycache__/
+*.py[cod]
+*.pyc
+*.spec
+build/
+dist/
+*.exe
+www/
+www1/
+www2/
+.venv/
+venv/
+.env
+.idea/
+.vscode/
