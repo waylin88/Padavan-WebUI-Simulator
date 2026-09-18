@@ -3,6 +3,7 @@ name: Build & Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -59,13 +60,42 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            short_sha=$(echo "${GITHUB_SHA}" | cut -c1-7)
+            echo "name=auto-${short_sha}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create tag if not exists
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          tag_name="${{ steps.tag.outputs.name }}"
+          if git rev-parse "$tag_name" >/dev/null 2>&1; then
+            echo "Tag $tag_name already exists"
+          else
+            git tag -a "$tag_name" -m "Release $tag_name"
+            git push origin "$tag_name"
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.name }}
           files: artifacts/*/*
           generate_release_notes: true
+          overwrite_files: true
