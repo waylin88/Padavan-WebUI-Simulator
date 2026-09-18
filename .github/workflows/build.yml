@@ -2,12 +2,12 @@ name: Build & Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [master, main]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. v1.0.0)，留空则仅构建不上传 Release"
+        description: "Release tag (e.g. v1.0.0)，留空则使用 auto-<short sha>"
         required: false
         default: ""
 
@@ -65,9 +65,6 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: |
-      startsWith(github.ref, 'refs/tags/v')
-      || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -79,23 +76,49 @@ jobs:
         run: |
           if [ -n "${{ inputs.tag }}" ]; then
             echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-            echo "is_external=true" >> "$GITHUB_OUTPUT"
-          else
+          elif [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-            echo "is_external=false" >> "$GITHUB_OUTPUT"
+          else
+            short_sha=$(echo "${GITHUB_SHA}" | cut -c1-7)
+            echo "name=auto-${short_sha}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create tag if needed
-        if: steps.tag.outputs.is_external == 'true'
+      - name: Create tag
         run: |
-          git tag -a "${{ steps.tag.outputs.name }}" -m "Release ${{ steps.tag.outputs.name }}"
-          git push origin "${{ steps.tag.outputs.name }}"
+          git fetch --tags -f
+          tag_name="${{ steps.tag.outputs.name }}"
+          if git rev-parse "$tag_name" >/dev/null 2>&1; then
+            git tag -d "$tag_name"
+          fi
+          git tag -a "$tag_name" -m "Release $tag_name"
+          git push origin "$tag_name" --force
 
-      - name: Create Release
+      - name: Generate release body
+        id: body
+        run: |
+          tag_name="${{ steps.tag.outputs.name }}"
+          sha="${GITHUB_SHA}"
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          echo "**Build: \`$tag_name\`**" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "Commit: \`${sha:0:7}\`  \`${sha}\`" >> "$GITHUB_OUTPUT"
+          echo "Event: \`${{ github.event_name }}\`" >> "$GITHUB_OUTPUT"
+          echo "Triggered by: ${{ github.actor }}" >> "$GITHUB_OUTPUT"
+          echo "" >> "$GITHUB_OUTPUT"
+          echo "| Platform | Binary |" >> "$GITHUB_OUTPUT"
+          echo "|----------|--------|" >> "$GITHUB_OUTPUT"
+          echo "| Linux x86_64 | \`padavan-sim-linux-amd64\` |" >> "$GITHUB_OUTPUT"
+          echo "| Windows x86_64 | \`padavan-sim-windows-amd64.exe\` |" >> "$GITHUB_OUTPUT"
+          echo "| macOS x86_64 | \`padavan-sim-macos-amd64\` |" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create or Update Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
+          name: "Release ${{ steps.tag.outputs.name }}"
+          body: ${{ steps.body.outputs.body }}
           files: artifacts/*/*
-          generate_release_notes: true
           draft: false
           prerelease: false
+          overwrite_files: true
