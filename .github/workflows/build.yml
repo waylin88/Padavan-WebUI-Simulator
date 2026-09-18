@@ -90,6 +90,8 @@ jobs:
 
       - name: Create tag
         run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
           git fetch --tags -f
           tag_name="${{ steps.tag.outputs.name }}"
           if git rev-parse "$tag_name" >/dev/null 2>&1; then
@@ -103,19 +105,22 @@ jobs:
         run: |
           tag_name="${{ steps.tag.outputs.name }}"
           sha="${GITHUB_SHA}"
-          echo "body<<EOF" >> "$GITHUB_OUTPUT"
-          echo "**Build: \`$tag_name\`**" >> "$GITHUB_OUTPUT"
-          echo "" >> "$GITHUB_OUTPUT"
-          echo "Commit: \`${sha:0:7}\`  \`${sha}\`" >> "$GITHUB_OUTPUT"
-          echo "Event: \`${{ github.event_name }}\`" >> "$GITHUB_OUTPUT"
-          echo "Triggered by: ${{ github.actor }}" >> "$GITHUB_OUTPUT"
-          echo "" >> "$GITHUB_OUTPUT"
-          echo "| Platform | Binary |" >> "$GITHUB_OUTPUT"
-          echo "|----------|--------|" >> "$GITHUB_OUTPUT"
-          echo "| Linux x86_64 | \`padavan-sim-linux-amd64\` |" >> "$GITHUB_OUTPUT"
-          echo "| Windows x86_64 | \`padavan-sim-windows-amd64.exe\` |" >> "$GITHUB_OUTPUT"
-          echo "| macOS x86_64 | \`padavan-sim-macos-amd64\` |" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          short="${sha:0:7}"
+          {
+            echo "body<<BODYEOF"
+            echo "**Build: \`$tag_name\`**"
+            echo ""
+            echo "Commit: \`$short\`  \`$sha\`"
+            echo "Event: \`${{ github.event_name }}\`"
+            echo "Triggered by: ${{ github.actor }}"
+            echo ""
+            echo "| Platform | Binary |"
+            echo "|----------|--------|"
+            echo "| Linux x86_64 | \`padavan-sim-linux-amd64\` |"
+            echo "| Windows x86_64 | \`padavan-sim-windows-amd64.exe\` |"
+            echo "| macOS x86_64 | \`padavan-sim-macos-amd64\` |"
+            echo "BODYEOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Create or Update Release
         uses: softprops/action-gh-release@v2
